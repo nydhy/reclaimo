@@ -93,6 +93,10 @@ func (o *Orchestrator) Subscribe() (<-chan events.Event, func()) {
 	return o.store.Subscribe()
 }
 
+func (o *Orchestrator) CheckPurchase(ctx context.Context, purchase domain.Purchase) {
+	o.checkPrice(ctx, purchase)
+}
+
 func (o *Orchestrator) monitorPurchase(ctx context.Context, purchase domain.Purchase) {
 	ticker := time.NewTicker(o.interval)
 	defer ticker.Stop()
