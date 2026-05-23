@@ -22,6 +22,9 @@ The API starts on `127.0.0.1:8080` by default.
 - `GET /healthz`
 - `POST /api/receipts`
 - `GET /api/events`
+- `GET /api/purchases`
+- `GET /api/purchases/{id}`
+- `POST /api/purchases/{id}/check`
 - `POST /api/reclaimo/recovery-report`
 - `POST /x402/transaction`
 
@@ -49,6 +52,8 @@ NIMBLE_API_KEY=...
 
 The live adapter uses Nimble's documented `POST /v1/extract` endpoint and Bearer authentication. Keep `RECLAIMO_POLL_INTERVAL` conservative while on a trial plan.
 
+Use `RECLAIMO_MAX_CHECKS_PER_PURCHASE` to stop autonomous polling after a fixed number of checks per purchase. `0` means unlimited.
+
 ClickHouse is optional:
 
 ```sh
@@ -59,3 +64,11 @@ CLICKHOUSE_PASSWORD=...
 ```
 
 When enabled, events are mirrored to ClickHouse while the in-memory store remains active for local reads and SSE.
+
+Verify ClickHouse writes without exposing secrets:
+
+```sh
+curl --user 'default:<password>' \
+  --data-binary 'SELECT type, count() FROM reclaimo.events GROUP BY type ORDER BY type' \
+  https://c6yash1lix.us-east-1.aws.clickhouse.cloud:8443
+```

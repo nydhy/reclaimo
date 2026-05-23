@@ -8,14 +8,15 @@ import (
 )
 
 type Config struct {
-	Addr              string
-	DemoEnabled       bool
-	PollInterval      time.Duration
-	RecoveryReportURL string
-	PaymentRailURL    string
-	Nimble            NimbleConfig
-	ClickHouse        ClickHouseConfig
-	Observability     ObservabilityConfig
+	Addr                 string
+	DemoEnabled          bool
+	PollInterval         time.Duration
+	MaxChecksPerPurchase int
+	RecoveryReportURL    string
+	PaymentRailURL       string
+	Nimble               NimbleConfig
+	ClickHouse           ClickHouseConfig
+	Observability        ObservabilityConfig
 }
 
 type NimbleConfig struct {
@@ -43,11 +44,12 @@ func Load() Config {
 	addr := env("RECLAIMO_API_ADDR", "127.0.0.1:8080")
 
 	return Config{
-		Addr:              addr,
-		DemoEnabled:       envBool("RECLAIMO_DEMO_ENABLED", true),
-		PollInterval:      envDuration("RECLAIMO_POLL_INTERVAL", 5*time.Second),
-		RecoveryReportURL: env("RECOVERY_REPORT_URL", "http://"+addr+"/api/reclaimo/recovery-report"),
-		PaymentRailURL:    env("PAYMENT_RAIL_URL", "http://"+addr+"/x402/transaction"),
+		Addr:                 addr,
+		DemoEnabled:          envBool("RECLAIMO_DEMO_ENABLED", true),
+		PollInterval:         envDuration("RECLAIMO_POLL_INTERVAL", 5*time.Second),
+		MaxChecksPerPurchase: envInt("RECLAIMO_MAX_CHECKS_PER_PURCHASE", 0),
+		RecoveryReportURL:    env("RECOVERY_REPORT_URL", "http://"+addr+"/api/reclaimo/recovery-report"),
+		PaymentRailURL:       env("PAYMENT_RAIL_URL", "http://"+addr+"/x402/transaction"),
 		Nimble: NimbleConfig{
 			Mode:    env("RECLAIMO_NIMBLE_MODE", "mock"),
 			APIKey:  env("NIMBLE_API_KEY", ""),
@@ -97,6 +99,19 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	}
 
 	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return fallback
 	}

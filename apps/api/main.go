@@ -34,6 +34,7 @@ func main() {
 		adapters.HTTPRecoveryPublisher{URL: cfg.RecoveryReportURL, Client: client},
 		adapters.HTTPPaymentRail{URL: cfg.PaymentRailURL, Client: client},
 		cfg.PollInterval,
+		cfg.MaxChecksPerPurchase,
 	)
 
 	mux := http.NewServeMux()
@@ -127,6 +128,28 @@ func registerRoutes(mux *http.ServeMux, agent *orchestrator.Orchestrator) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string][]events.Event{"events": agent.ListEvents()})
+	})
+
+	mux.HandleFunc("GET /api/purchases", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string][]domain.PurchaseSnapshot{"purchases": agent.ListPurchases()})
+	})
+
+	mux.HandleFunc("GET /api/purchases/{id}", func(w http.ResponseWriter, r *http.Request) {
+		snapshot, err := agent.PurchaseSnapshot(r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]domain.PurchaseSnapshot{"purchase": snapshot})
+	})
+
+	mux.HandleFunc("POST /api/purchases/{id}/check", func(w http.ResponseWriter, r *http.Request) {
+		snapshot, err := agent.CheckPurchaseByID(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]domain.PurchaseSnapshot{"purchase": snapshot})
 	})
 
 	mux.HandleFunc("POST /api/reclaimo/recovery-report", func(w http.ResponseWriter, r *http.Request) {

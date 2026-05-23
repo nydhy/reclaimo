@@ -30,5 +30,6 @@ Status:
 
 - Nimble trial calls are protected by `RECLAIMO_NIMBLE_MODE=mock` by default.
 - Nimble live mode requires receipt text to include a product URL.
+- `RECLAIMO_MAX_CHECKS_PER_PURCHASE` bounds autonomous monitoring loops for live-mode safety.
 - Secrets belong in `.env` or a secret manager, never in committed files.
 - Commit and push after each completed phase.

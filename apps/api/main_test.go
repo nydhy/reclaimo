@@ -81,6 +81,7 @@ func TestGetEventsReturnsEvents(t *testing.T) {
 		adapters.HTTPRecoveryPublisher{URL: "http://127.0.0.1:1"},
 		adapters.HTTPPaymentRail{URL: "http://127.0.0.1:1"},
 		time.Hour,
+		0,
 	)
 	_, err := agent.IngestReceipt(context.Background(), "MacBook Pro 14 M4\nPrice: $2199")
 	if err != nil {
@@ -102,6 +103,72 @@ func TestGetEventsReturnsEvents(t *testing.T) {
 	}
 }
 
+func TestPurchaseEndpoints(t *testing.T) {
+	mux := testMux()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/receipts", strings.NewReader(`{"text":"MacBook Pro 14 M4\nPrice: $2199"}`))
+	createRec := httptest.NewRecorder()
+	mux.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d", createRec.Code, http.StatusCreated)
+	}
+
+	var createResponse struct {
+		Purchase struct {
+			ID string `json:"id"`
+		} `json:"purchase"`
+	}
+	if err := json.NewDecoder(createRec.Body).Decode(&createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/purchases", nil)
+	listRec := httptest.NewRecorder()
+	mux.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listRec.Code, http.StatusOK)
+	}
+	if !strings.Contains(listRec.Body.String(), createResponse.Purchase.ID) {
+		t.Fatalf("list response does not include purchase id: %s", listRec.Body.String())
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/api/purchases/"+createResponse.Purchase.ID, nil)
+	detailRec := httptest.NewRecorder()
+	mux.ServeHTTP(detailRec, detailReq)
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("detail status = %d, want %d", detailRec.Code, http.StatusOK)
+	}
+
+	checkReq := httptest.NewRequest(http.MethodPost, "/api/purchases/"+createResponse.Purchase.ID+"/check", nil)
+	checkRec := httptest.NewRecorder()
+	mux.ServeHTTP(checkRec, checkReq)
+	if checkRec.Code != http.StatusAccepted {
+		t.Fatalf("manual check status = %d, want %d; body=%s", checkRec.Code, http.StatusAccepted, checkRec.Body.String())
+	}
+}
+
+func TestPurchaseEndpointsReturnNotFound(t *testing.T) {
+	tests := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/purchases/missing"},
+		{method: http.MethodPost, path: "/api/purchases/missing/check"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			rec := httptest.NewRecorder()
+
+			testMux().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+			}
+		})
+	}
+}
+
 func testMux() *http.ServeMux {
 	store := events.NewMemoryStore()
 	agent := orchestrator.New(
@@ -110,6 +177,7 @@ func testMux() *http.ServeMux {
 		adapters.HTTPRecoveryPublisher{URL: "http://127.0.0.1:1"},
 		adapters.HTTPPaymentRail{URL: "http://127.0.0.1:1"},
 		time.Hour,
+		0,
 	)
 	mux := http.NewServeMux()
 	registerRoutes(mux, agent)

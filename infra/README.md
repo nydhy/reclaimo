@@ -52,3 +52,11 @@ CREATE TABLE IF NOT EXISTS reclaimo.events (
 ENGINE = MergeTree
 ORDER BY (timestamp, type, id);
 ```
+
+Verification query:
+
+```sh
+curl --user 'default:<password>' \
+  --data-binary 'SELECT type, count() FROM reclaimo.events GROUP BY type ORDER BY type' \
+  https://c6yash1lix.us-east-1.aws.clickhouse.cloud:8443
+```

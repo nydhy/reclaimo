@@ -12,6 +12,25 @@ type Purchase struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+type PurchaseStatus string
+
+const (
+	PurchaseStatusMonitoring PurchaseStatus = "monitoring"
+	PurchaseStatusRecovered  PurchaseStatus = "recovered"
+	PurchaseStatusStopped    PurchaseStatus = "stopped"
+)
+
+type PurchaseSnapshot struct {
+	Purchase       Purchase          `json:"purchase"`
+	Status         PurchaseStatus    `json:"status"`
+	CheckCount     int               `json:"check_count"`
+	MaxChecks      int               `json:"max_checks,omitempty"`
+	LastCheckedAt  *time.Time        `json:"last_checked_at,omitempty"`
+	LastObserved   *PriceObservation `json:"last_observed,omitempty"`
+	RecoveredAt    *time.Time        `json:"recovered_at,omitempty"`
+	TerminalReason string            `json:"terminal_reason,omitempty"`
+}
+
 type PriceObservation struct {
 	PurchaseID string    `json:"purchase_id"`
 	Product    string    `json:"product"`
