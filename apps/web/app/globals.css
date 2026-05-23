@@ -51,7 +51,7 @@ button:disabled {
 
 .shell {
   min-height: 100vh;
-  padding: 28px;
+  padding: 32px;
 }
 
 .topbar,
@@ -63,7 +63,8 @@ button:disabled {
 
 .topbar {
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 24px;
+  min-height: 90px;
 }
 
 h1,
@@ -82,7 +83,7 @@ h2 {
 
 h1 {
   font-size: 56px;
-  line-height: 1;
+  line-height: 1.05;
 }
 
 h2 {
@@ -117,6 +118,65 @@ h3 {
   border: 1px solid var(--outline-variant);
   color: var(--on-surface-variant);
   padding: 10px 14px;
+}
+
+.mode-strip {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+}
+
+.observability-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.observability-strip div {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 4px 10px;
+  grid-template-columns: 24px 1fr;
+  padding: 10px 12px;
+}
+
+.observability-strip svg {
+  color: var(--primary);
+  grid-row: span 2;
+}
+
+.observability-strip strong {
+  font-size: 14px;
+}
+
+.observability-strip span {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+.mode-strip div {
+  align-items: center;
+  color: var(--primary-strong);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.mode-strip p {
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  text-align: right;
 }
 
 .pulse {
@@ -271,6 +331,11 @@ textarea:focus {
   padding: 10px;
 }
 
+.flow-node span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .flow-node.active {
   background: var(--primary-soft);
   border-color: rgba(27, 106, 29, 0.35);
@@ -309,6 +374,12 @@ textarea:focus {
 .purchase-main {
   display: grid;
   gap: 5px;
+  min-width: 0;
+}
+
+.purchase-main h3,
+.recovery-item span {
+  overflow-wrap: anywhere;
 }
 
 .status-chip {
@@ -317,6 +388,30 @@ textarea:focus {
   justify-self: start;
   padding: 4px 9px;
   text-transform: uppercase;
+}
+
+.source-badge {
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  justify-self: start;
+  padding: 4px 9px;
+}
+
+.source-badge.demo {
+  background: var(--tertiary-soft);
+  color: var(--tertiary);
+}
+
+.source-badge.nimble {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.source-badge.test,
+.source-badge.unknown {
+  background: var(--surface-high);
+  color: var(--on-surface-variant);
 }
 
 .status-chip.monitoring {
@@ -371,15 +466,22 @@ textarea:focus {
   font-size: 24px;
 }
 
+.recovery-item small {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .trace-console {
   margin-top: 16px;
+  min-height: 280px;
   padding: 16px;
 }
 
 .trace-lines {
   display: grid;
   gap: 6px;
-  max-height: 280px;
+  max-height: 360px;
   overflow: auto;
 }
 
@@ -390,9 +492,9 @@ textarea:focus {
   border-radius: 8px;
   display: grid;
   gap: 10px;
-  grid-template-columns: 92px minmax(180px, 1fr) 100px;
-  min-height: 34px;
-  padding: 7px 10px;
+  grid-template-columns: 92px minmax(220px, 1fr) 110px;
+  min-height: 48px;
+  padding: 9px 10px;
 }
 
 .trace-line code {
@@ -400,6 +502,13 @@ textarea:focus {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   font-weight: 700;
+}
+
+.trace-line p {
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  line-height: 1.35;
+  margin-top: 3px;
 }
 
 .empty-state {
@@ -433,10 +542,15 @@ textarea:focus {
   }
 
   .topbar,
-  .stage-header {
+  .stage-header,
+  .mode-strip {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .mode-strip p {
+    text-align: left;
   }
 
   h1 {
@@ -445,6 +559,10 @@ textarea:focus {
 
   .flow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .observability-strip {
+    grid-template-columns: 1fr;
   }
 
   .purchase-row,
@@ -456,4 +574,3 @@ textarea:focus {
     justify-items: start;
   }
 }
-

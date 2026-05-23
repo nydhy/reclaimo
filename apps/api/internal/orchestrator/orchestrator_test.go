@@ -24,6 +24,7 @@ func (m fakeMonitor) FetchPrice(_ context.Context, purchase domain.Purchase) (do
 		Product:    purchase.Product,
 		Price:      m.price,
 		URL:        "https://example.com/product",
+		Source:     "test",
 		Available:  true,
 		Timestamp:  time.Now().UTC(),
 	}, nil

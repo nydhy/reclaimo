@@ -1,6 +1,6 @@
 # Reclaimo
 
-Reclaimo is an email-first autonomous price recovery agent. The backend ingests receipt text, extracts purchase data, monitors prices, emits a full event trace, publishes a recovery report, and triggers a payment intent.
+Reclaimo is an email-first autonomous price recovery agent. The backend ingests receipt text, extracts purchase data, monitors prices, emits a full event trace, publishes a recovery dossier, and triggers a payment intent.
 
 ## Current Scope
 
@@ -17,6 +17,12 @@ cd apps/api
 go run .
 ```
 
+To send real Datadog-compatible spans to Lapdog:
+
+```sh
+DATADOG_ENABLED=true DD_AGENT_ADDR=127.0.0.1:8126 go run .
+```
+
 The API starts on `127.0.0.1:8080` by default.
 
 - `GET /healthz`
@@ -28,7 +34,7 @@ The API starts on `127.0.0.1:8080` by default.
 - `POST /api/reclaimo/recovery-report`
 - `POST /x402/transaction`
 
-Demo mode is enabled by default and seeds two purchases. A forced price drop is emitted within 15 seconds without consuming Nimble trial quota.
+Demo mode is enabled by default and seeds two purchases. A forced price drop is emitted within 15 seconds without consuming Nimble trial quota. Demo observations are labeled as demo price signals in the UI.
 
 ## Configuration
 
@@ -40,6 +46,7 @@ Real external calls are opt-in:
 - Nimble live monitoring requires a product URL in the receipt text.
 - Recovery publishing defaults to the local API endpoint.
 - Payment rails are simulated until x402/CDP credentials exist.
+- Datadog tracing is sent to Lapdog only when `DATADOG_ENABLED=true`.
 
 ## Live Integration Guardrails
 

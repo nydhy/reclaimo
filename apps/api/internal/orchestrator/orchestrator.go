@@ -10,6 +10,7 @@ import (
 	"github.com/nydhy/reclaimo/apps/api/internal/domain"
 	"github.com/nydhy/reclaimo/apps/api/internal/events"
 	"github.com/nydhy/reclaimo/apps/api/internal/parser"
+	"github.com/nydhy/reclaimo/apps/api/internal/telemetry"
 )
 
 type Orchestrator struct {
@@ -56,13 +57,19 @@ func New(store events.Store, monitor adapters.PriceMonitor, publisher adapters.R
 	}
 }
 
-func (o *Orchestrator) IngestReceipt(ctx context.Context, text string) (domain.Purchase, error) {
+func (o *Orchestrator) IngestReceipt(ctx context.Context, text string) (purchase domain.Purchase, err error) {
+	ctx, span := telemetry.StartSpan(ctx, "reclaimo.ingest_receipt", map[string]any{
+		"component": "orchestrator",
+		"source":    "receipt",
+	})
+	defer func() { span.Finish(err) }()
+
 	parsed, err := parser.ParseReceipt(text)
 	if err != nil {
 		return domain.Purchase{}, err
 	}
 
-	purchase := domain.Purchase{
+	purchase = domain.Purchase{
 		ID:            o.nextID("purchase"),
 		Product:       parsed.Product,
 		BaselinePrice: parsed.Price,
@@ -71,6 +78,10 @@ func (o *Orchestrator) IngestReceipt(ctx context.Context, text string) (domain.P
 		URL:           parsed.URL,
 		CreatedAt:     time.Now().UTC(),
 	}
+	span.SetTag("purchase.id", purchase.ID)
+	span.SetTag("purchase.product", purchase.Product)
+	span.SetTag("purchase.baseline_price", purchase.BaselinePrice)
+	span.SetTag("purchase.has_url", purchase.URL != "")
 
 	o.mu.Lock()
 	o.purchases[purchase.ID] = &purchaseState{
@@ -172,6 +183,16 @@ func (o *Orchestrator) checkPrice(ctx context.Context, purchase domain.Purchase,
 		return false
 	}
 
+	ctx, span := telemetry.StartSpan(ctx, "reclaimo.price_check", map[string]any{
+		"component":               "monitor",
+		"purchase.id":             purchase.ID,
+		"purchase.product":        purchase.Product,
+		"purchase.baseline_price": purchase.BaselinePrice,
+		"manual":                  manual,
+	})
+	var spanErr error
+	defer func() { span.Finish(spanErr) }()
+
 	o.emit(events.PriceCheckStarted, map[string]any{
 		"purchase_id": purchase.ID,
 		"product":     purchase.Product,
@@ -180,6 +201,7 @@ func (o *Orchestrator) checkPrice(ctx context.Context, purchase domain.Purchase,
 
 	observation, err := o.monitor.FetchPrice(ctx, purchase)
 	if err != nil {
+		spanErr = err
 		o.emit(events.PriceUpdated, map[string]any{
 			"purchase_id": purchase.ID,
 			"error":       err.Error(),
@@ -188,6 +210,10 @@ func (o *Orchestrator) checkPrice(ctx context.Context, purchase domain.Purchase,
 	}
 
 	o.recordObservation(purchase.ID, observation)
+	span.SetTag("price.current", observation.Price)
+	span.SetTag("price.source", observation.Source)
+	span.SetTag("price.available", observation.Available)
+	span.SetTag("price.drop_detected", observation.Price < purchase.BaselinePrice)
 	o.emit(events.PriceUpdated, map[string]any{"observation": observation})
 
 	if observation.Price < purchase.BaselinePrice {
@@ -198,6 +224,17 @@ func (o *Orchestrator) checkPrice(ctx context.Context, purchase domain.Purchase,
 }
 
 func (o *Orchestrator) handleDrop(ctx context.Context, purchase domain.Purchase, observation domain.PriceObservation) {
+	ctx, span := telemetry.StartSpan(ctx, "reclaimo.recovery_workflow", map[string]any{
+		"component":               "recovery",
+		"purchase.id":             purchase.ID,
+		"purchase.product":        purchase.Product,
+		"purchase.baseline_price": purchase.BaselinePrice,
+		"price.current":           observation.Price,
+		"price.source":            observation.Source,
+	})
+	var spanErr error
+	defer func() { span.Finish(spanErr) }()
+
 	o.mu.Lock()
 	state, ok := o.purchases[purchase.ID]
 	if !ok {
@@ -215,6 +252,7 @@ func (o *Orchestrator) handleDrop(ctx context.Context, purchase domain.Purchase,
 	o.mu.Unlock()
 
 	recoveryAmount := purchase.BaselinePrice - observation.Price
+	span.SetTag("recovery.amount", recoveryAmount)
 	o.emit(events.PriceDropDetected, map[string]any{
 		"purchase_id":     purchase.ID,
 		"baseline_price":  purchase.BaselinePrice,
@@ -232,9 +270,10 @@ func (o *Orchestrator) handleDrop(ctx context.Context, purchase domain.Purchase,
 	}
 	o.emit(events.RecoveryReportGenerated, map[string]any{"report": report})
 
-	if err := o.publisher.Publish(ctx, report); err == nil {
+	if err := o.publishRecoveryDossier(ctx, report); err == nil {
 		o.emit(events.RecoveryPublished, map[string]any{"report": report})
 	} else {
+		spanErr = err
 		o.emit(events.RecoveryPublished, map[string]any{"error": err.Error(), "report": report})
 	}
 
@@ -244,11 +283,36 @@ func (o *Orchestrator) handleDrop(ctx context.Context, purchase domain.Purchase,
 		Status:    "initiated",
 		CreatedAt: time.Now().UTC(),
 	}
-	if err := o.payments.Trigger(ctx, intent); err == nil {
+	if err := o.triggerPaymentIntent(ctx, intent); err == nil {
 		o.emit(events.PaymentTriggered, map[string]any{"transaction": intent})
 	} else {
+		if spanErr == nil {
+			spanErr = err
+		}
 		o.emit(events.PaymentTriggered, map[string]any{"error": err.Error(), "transaction": intent})
 	}
+}
+
+func (o *Orchestrator) publishRecoveryDossier(ctx context.Context, report domain.RecoveryReport) error {
+	ctx, span := telemetry.StartSpan(ctx, "reclaimo.publish_recovery_dossier", map[string]any{
+		"component":       "publisher",
+		"product":         report.Product,
+		"recovery.amount": report.RecoveryAmount,
+	})
+	err := o.publisher.Publish(ctx, report)
+	span.Finish(err)
+	return err
+}
+
+func (o *Orchestrator) triggerPaymentIntent(ctx context.Context, intent domain.TransactionIntent) error {
+	ctx, span := telemetry.StartSpan(ctx, "reclaimo.trigger_payment_intent", map[string]any{
+		"component": "payment_rail",
+		"type":      intent.Type,
+		"amount":    intent.Amount,
+	})
+	err := o.payments.Trigger(ctx, intent)
+	span.Finish(err)
+	return err
 }
 
 func (o *Orchestrator) markCheckStarted(id string, manual bool) bool {

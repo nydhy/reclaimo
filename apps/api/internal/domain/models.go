@@ -36,6 +36,7 @@ type PriceObservation struct {
 	Product    string    `json:"product"`
 	Price      float64   `json:"price"`
 	URL        string    `json:"url"`
+	Source     string    `json:"source"`
 	Available  bool      `json:"available"`
 	Timestamp  time.Time `json:"timestamp"`
 }

@@ -6,7 +6,7 @@ Create the backend-first monorepo structure, root documentation, and environment
 
 ## Phase 1 - Core Contracts
 
-Define purchases, price observations, recovery reports, transaction intents, and versioned events.
+Define purchases, price observations, recovery dossiers, transaction intents, and versioned events.
 
 ## Phase 2 - Orchestrator
 

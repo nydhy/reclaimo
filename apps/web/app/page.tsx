@@ -5,6 +5,7 @@ import {
   Check,
   CircleDollarSign,
   ClipboardCheck,
+  Database,
   Globe2,
   Play,
   Radar,
@@ -12,9 +13,10 @@ import {
   RefreshCw,
   Send,
   Terminal,
+  Zap,
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { compactTime, money, PurchaseSnapshot } from "../lib/reclaimo";
+import { compactTime, eventSummary, money, PurchaseSnapshot } from "../lib/reclaimo";
 import { useReclaimo } from "../lib/use-reclaimo";
 
 const sampleReceipt =
@@ -26,7 +28,7 @@ const stages = [
   { label: "Monitor", type: "PRICE_CHECK_STARTED", icon: Radar },
   { label: "Update", type: "PRICE_UPDATED", icon: Globe2 },
   { label: "Detect", type: "PRICE_DROP_DETECTED", icon: Activity },
-  { label: "Report", type: "RECOVERY_REPORT_GENERATED", icon: Send },
+  { label: "Dossier", type: "RECOVERY_REPORT_GENERATED", icon: Send },
   { label: "Publish", type: "RECOVERY_PUBLISHED", icon: Check },
   { label: "Payment", type: "PAYMENT_TRIGGERED", icon: CircleDollarSign },
 ];
@@ -39,6 +41,7 @@ export default function Home() {
     connected,
     error,
     events,
+    lapdog,
     purchases,
     submitReceipt,
   } = useReclaimo();
@@ -68,11 +71,32 @@ export default function Home() {
         </div>
         <div className="status-strip" aria-label="Backend connection status">
           <span className={connected ? "pulse online" : "pulse"} />
-          <span>{connected ? "Agent stream live" : "Waiting for backend"}</span>
+          <span>{connected ? "Backend online" : "Waiting for backend"}</span>
         </div>
       </header>
 
+      <section className="mode-strip" aria-label="Agent mode">
+        <div>
+          <Zap size={16} />
+          <span>Demo Agent Mode</span>
+        </div>
+        <p>Deterministic price signals are active. Live Nimble verification appears as a separate source badge.</p>
+      </section>
+
       {error ? <div className="error-band">{error}</div> : null}
+
+      <section className="observability-strip" aria-label="Observability status">
+        <div>
+          <Terminal size={16} />
+          <strong>{lapdog.running ? "Lapdog intake online" : "Lapdog intake not detected"}</strong>
+          <span>{lapdog.running ? "127.0.0.1:8126" : "Run lapdog start"}</span>
+        </div>
+        <div>
+          <Database size={16} />
+          <strong>ClickHouse event memory</strong>
+          <span>Mirrors Reclaimo events when enabled</span>
+        </div>
+      </section>
 
       <section className="workbench">
         <aside className="panel intake-panel">
@@ -117,7 +141,7 @@ export default function Home() {
                   <div className="node-icon">
                     <Icon size={18} />
                   </div>
-                  <span>{stage.label}</span>
+                  <span title={stage.label}>{stage.label}</span>
                 </div>
               );
             })}
@@ -137,7 +161,7 @@ export default function Home() {
         <aside className="panel recovery-panel">
           <div className="panel-heading">
             <CircleDollarSign size={18} />
-            <h2>Recovery Stream</h2>
+            <h2>Recovery Dossiers</h2>
           </div>
           <div className="recovery-list">
             {purchases
@@ -145,6 +169,7 @@ export default function Home() {
               .map((item) => (
                 <div className="recovery-item" key={item.purchase.id}>
                   <span>{item.purchase.product}</span>
+                  <small>{sourceLabel(item.last_observed?.source)} dossier</small>
                   <strong>
                     {money(
                       item.purchase.baseline_price - (item.last_observed?.price ?? item.purchase.baseline_price),
@@ -153,7 +178,7 @@ export default function Home() {
                 </div>
               ))}
             {purchases.every((item) => item.status !== "recovered") ? (
-              <div className="empty-state compact">No recovery events yet.</div>
+              <div className="empty-state compact">No recovery dossiers yet.</div>
             ) : null}
           </div>
         </aside>
@@ -172,7 +197,10 @@ export default function Home() {
             .map((event) => (
               <div className="trace-line" key={event.id}>
                 <time>{compactTime(event.timestamp)}</time>
-                <code>{event.type}</code>
+                <div>
+                  <code>{event.type}</code>
+                  <p>{eventSummary(event)}</p>
+                </div>
                 <span>{event.id}</span>
               </div>
             ))}
@@ -204,6 +232,7 @@ function PurchaseRow({
   const baseline = item.purchase.baseline_price;
   const current = item.last_observed?.price;
   const delta = current ? Math.max(0, baseline - current) : 0;
+  const source = sourceLabel(item.last_observed?.source);
 
   return (
     <article className="purchase-row">
@@ -214,6 +243,7 @@ function PurchaseRow({
           {money(baseline)} baseline
           {current ? ` · ${money(current)} observed` : ""}
         </p>
+        {current ? <span className={`source-badge ${item.last_observed?.source ?? "unknown"}`}>{source}</span> : null}
       </div>
       <div className="purchase-meta">
         <span>{item.check_count} checks</span>
@@ -232,3 +262,9 @@ function PurchaseRow({
   );
 }
 
+function sourceLabel(source?: string) {
+  if (source === "nimble") return "Live Nimble signal";
+  if (source === "demo") return "Demo price signal";
+  if (source === "test") return "Test signal";
+  return "Price signal";
+}

@@ -103,6 +103,7 @@ func (m *NimbleMonitor) FetchPrice(ctx context.Context, purchase domain.Purchase
 		Product:    purchase.Product,
 		Price:      price,
 		URL:        purchase.URL,
+		Source:     "nimble",
 		Available:  extracted.Status == "" || extracted.Status == "success",
 		Timestamp:  time.Now().UTC(),
 	}, nil

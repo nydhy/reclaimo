@@ -18,6 +18,12 @@ export type AgentEvent = {
   payload: Record<string, unknown>;
 };
 
+export type LapdogInfo = {
+  running: boolean;
+  version?: string;
+  endpoints?: string[];
+};
+
 export type Purchase = {
   id: string;
   product: string;
@@ -33,6 +39,7 @@ export type PriceObservation = {
   product: string;
   price: number;
   url: string;
+  source?: "demo" | "nimble" | "test" | string;
   available: boolean;
   timestamp: string;
 };
@@ -59,6 +66,17 @@ export async function fetchPurchases(): Promise<PurchaseSnapshot[]> {
   return body.purchases;
 }
 
+export async function fetchEvents(): Promise<AgentEvent[]> {
+  const response = await fetch("/reclaimo-api/api/events", {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Unable to load events: ${response.status}`);
+  }
+  const body = (await response.json()) as { events: AgentEvent[] };
+  return body.events;
+}
+
 export async function ingestReceipt(text: string): Promise<Purchase> {
   const response = await fetch("/reclaimo-api/api/receipts", {
     method: "POST",
@@ -83,8 +101,23 @@ export async function runManualCheck(id: string): Promise<PurchaseSnapshot> {
   return body.purchase as PurchaseSnapshot;
 }
 
-export function subscribeToEvents(onEvent: (event: AgentEvent) => void) {
+export async function fetchLapdogInfo(): Promise<LapdogInfo> {
+  const response = await fetch("/lapdog/info", { cache: "no-store" });
+  if (!response.ok) {
+    return { running: false };
+  }
+  const body = (await response.json()) as { version?: string; endpoints?: string[] };
+  return { running: true, version: body.version, endpoints: body.endpoints ?? [] };
+}
+
+export function subscribeToEvents(
+  onEvent: (event: AgentEvent) => void,
+  onOpen?: () => void,
+  onError?: () => void,
+) {
   const source = new EventSource("/reclaimo-api/api/events");
+  source.onopen = () => onOpen?.();
+  source.onerror = () => onError?.();
   source.onmessage = (message) => {
     onEvent(JSON.parse(message.data) as AgentEvent);
   };
@@ -123,3 +156,62 @@ export function compactTime(value?: string) {
   }).format(new Date(value));
 }
 
+export function eventSummary(event: AgentEvent) {
+  const payload = event.payload;
+  switch (event.type) {
+    case "PURCHASE_INGESTED": {
+      const purchase = payload.purchase as Purchase | undefined;
+      return purchase
+        ? `Registered ${purchase.product} at ${money(purchase.baseline_price)} from ${purchase.source}`
+        : "Registered purchase";
+    }
+    case "PRODUCT_EXTRACTED":
+      return `Extracted ${stringValue(payload.product)} with baseline ${money(numberValue(payload.baseline_price))}`;
+    case "PRICE_CHECK_STARTED":
+      return `${payload.manual ? "Manual" : "Autonomous"} price check started for ${stringValue(payload.product)}`;
+    case "PRICE_UPDATED": {
+      if (typeof payload.error === "string") return `Price check failed: ${payload.error}`;
+      const observation = payload.observation as PriceObservation | undefined;
+      return observation
+        ? `${sourceName(observation.source)} observed ${money(observation.price)} for ${observation.product}`
+        : "Price observation recorded";
+    }
+    case "PRICE_DROP_DETECTED":
+      return `Detected ${money(numberValue(payload.recovery_amount))} recovery opportunity: ${money(
+        numberValue(payload.baseline_price),
+      )} to ${money(numberValue(payload.current_price))}`;
+    case "RECOVERY_REPORT_GENERATED": {
+      const report = payload.report as
+        | { product?: string; recovery_amount?: number; current_price?: number }
+        | undefined;
+      return report
+        ? `Generated recovery dossier for ${report.product ?? "purchase"} worth ${money(report.recovery_amount)}`
+        : "Generated recovery dossier";
+    }
+    case "RECOVERY_PUBLISHED":
+      return typeof payload.error === "string"
+        ? `Dossier publish failed: ${payload.error}`
+        : "Published recovery dossier to external endpoint";
+    case "PAYMENT_TRIGGERED": {
+      const transaction = payload.transaction as { amount?: number; status?: string } | undefined;
+      if (typeof payload.error === "string") return `Payment rail failed: ${payload.error}`;
+      return `Triggered payment intent for ${money(transaction?.amount)} (${transaction?.status ?? "initiated"})`;
+    }
+    default:
+      return "Agent event recorded";
+  }
+}
+
+function sourceName(source?: string) {
+  if (source === "nimble") return "Live Nimble";
+  if (source === "demo") return "Demo signal";
+  return "Price signal";
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "purchase";
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" ? value : undefined;
+}

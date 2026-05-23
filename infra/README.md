@@ -35,6 +35,47 @@ Current local status after Phase 4:
 [lapdog] Lapdog running at http://127.0.0.1:8126/info
 ```
 
+Check the Datadog-compatible intake metadata directly:
+
+```sh
+curl http://127.0.0.1:8126/info
+```
+
+The web app proxies this endpoint at:
+
+```text
+http://localhost:3000/lapdog/info
+```
+
+Current Reclaimo UI usage:
+
+- Shows whether the local Lapdog intake is reachable.
+- Uses the backend event stream as the visible execution trace.
+- Sends Go spans to Lapdog when the API starts with `DATADOG_ENABLED=true`.
+
+Run traced backend:
+
+```sh
+cd apps/api
+DATADOG_ENABLED=true DD_AGENT_ADDR=127.0.0.1:8126 go run .
+```
+
+Instrumented span names:
+
+- `reclaimo.ingest_receipt`
+- `reclaimo.price_check`
+- `reclaimo.recovery_workflow`
+- `reclaimo.publish_recovery_dossier`
+- `reclaimo.trigger_payment_intent`
+
+Verify traces are being received:
+
+```sh
+tail -80 /Users/work/.lapdog/lapdog.log
+```
+
+Look for `POST /v0.4/traces` and span trees containing the `reclaimo.*` span names above.
+
 ## ClickHouse
 
 ClickHouse support will be added behind the event store interface. Local startup should continue to work without ClickHouse while credentials are being configured.

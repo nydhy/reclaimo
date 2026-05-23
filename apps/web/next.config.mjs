@@ -5,6 +5,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: "/lapdog/:path*",
+        destination: "http://127.0.0.1:8126/:path*",
+      },
+      {
         source: "/reclaimo-api/:path*",
         destination: `${apiUrl}/:path*`,
       },
@@ -13,4 +17,3 @@ const nextConfig = {
 };
 
 export default nextConfig;
-

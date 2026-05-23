@@ -14,6 +14,7 @@ import (
 	"github.com/nydhy/reclaimo/apps/api/internal/domain"
 	"github.com/nydhy/reclaimo/apps/api/internal/events"
 	"github.com/nydhy/reclaimo/apps/api/internal/orchestrator"
+	"github.com/nydhy/reclaimo/apps/api/internal/telemetry"
 )
 
 type receiptRequest struct {
@@ -25,6 +26,13 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	stopTracing := telemetry.Start(telemetry.Config{
+		Enabled:   cfg.Observability.Enabled,
+		Service:   cfg.Observability.Service,
+		AgentAddr: cfg.Observability.AgentAddr,
+		Env:       cfg.Observability.Env,
+	})
+	defer stopTracing()
 
 	eventStore := buildEventStore(ctx, cfg)
 	client := &http.Client{Timeout: 5 * time.Second}

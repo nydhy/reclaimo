@@ -36,8 +36,10 @@ type ClickHouseConfig struct {
 }
 
 type ObservabilityConfig struct {
-	Enabled bool
-	Service string
+	Enabled   bool
+	Service   string
+	AgentAddr string
+	Env       string
 }
 
 func Load() Config {
@@ -65,8 +67,10 @@ func Load() Config {
 			Password: env("CLICKHOUSE_PASSWORD", ""),
 		},
 		Observability: ObservabilityConfig{
-			Enabled: envBool("DATADOG_ENABLED", false),
-			Service: env("DD_SERVICE", "reclaimo-api"),
+			Enabled:   envBool("DATADOG_ENABLED", false),
+			Service:   env("DD_SERVICE", "reclaimo-api"),
+			AgentAddr: env("DD_AGENT_ADDR", "127.0.0.1:8126"),
+			Env:       env("DD_ENV", "local"),
 		},
 	}
 }

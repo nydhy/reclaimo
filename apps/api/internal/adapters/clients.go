@@ -53,6 +53,7 @@ func (m *MockPriceMonitor) FetchPrice(_ context.Context, purchase domain.Purchas
 		Product:    purchase.Product,
 		Price:      price,
 		URL:        "https://example.com/reclaimo/mock-price",
+		Source:     "demo",
 		Available:  true,
 		Timestamp:  time.Now().UTC(),
 	}, nil

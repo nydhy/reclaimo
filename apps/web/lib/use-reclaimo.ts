@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AgentEvent,
+  fetchEvents,
+  fetchLapdogInfo,
   fetchPurchases,
   ingestReceipt,
+  LapdogInfo,
   PurchaseSnapshot,
   runManualCheck,
   subscribeToEvents,
@@ -27,37 +30,64 @@ export function useReclaimo() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [lapdog, setLapdog] = useState<LapdogInfo>({ running: false });
 
   const refreshPurchases = useCallback(async () => {
     try {
-      setPurchases(await fetchPurchases());
+      setPurchases(sortPurchases(await fetchPurchases()));
+      setConnected(true);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load purchases");
+      setConnected(false);
     }
+  }, []);
+
+  const refreshEvents = useCallback(async () => {
+    try {
+      const loaded = await fetchEvents();
+      setEvents((current) => dedupeEvents([...current, ...loaded]).slice(-160));
+      setConnected(true);
+    } catch {
+      // SSE may still be healthy; avoid replacing a useful API error from purchases.
+    }
+  }, []);
+
+  const refreshLapdog = useCallback(async () => {
+    setLapdog(await fetchLapdogInfo());
   }, []);
 
   useEffect(() => {
     refreshPurchases();
-    const interval = window.setInterval(refreshPurchases, 2500);
+    refreshEvents();
+    refreshLapdog();
+    const interval = window.setInterval(() => {
+      refreshPurchases();
+      refreshEvents();
+      refreshLapdog();
+    }, 2500);
     return () => window.clearInterval(interval);
-  }, [refreshPurchases]);
+  }, [refreshEvents, refreshLapdog, refreshPurchases]);
 
   useEffect(() => {
-    const close = subscribeToEvents((event) => {
-      setConnected(true);
-      setEvents((current) => dedupeEvents([...current, event]).slice(-160));
-      if (
-        event.type === "PURCHASE_INGESTED" ||
-        event.type === "PRICE_UPDATED" ||
-        event.type === "PRICE_DROP_DETECTED" ||
-        event.type === "PAYMENT_TRIGGERED"
-      ) {
-        refreshPurchases();
-      }
-    });
+    const close = subscribeToEvents(
+      (event) => {
+        setConnected(true);
+        setEvents((current) => dedupeEvents([...current, event]).slice(-160));
+        if (
+          event.type === "PURCHASE_INGESTED" ||
+          event.type === "PRICE_UPDATED" ||
+          event.type === "PRICE_DROP_DETECTED" ||
+          event.type === "PAYMENT_TRIGGERED"
+        ) {
+          refreshPurchases();
+        }
+      },
+      () => setConnected(true),
+      () => refreshEvents(),
+    );
     return close;
-  }, [refreshPurchases]);
+  }, [refreshEvents, refreshPurchases]);
 
   const submitReceipt = useCallback(
     async (text: string) => {
@@ -92,9 +122,10 @@ export function useReclaimo() {
   );
 
   const activeStage = useMemo(() => {
-    const latest = events.at(-1);
-    if (!latest) return 0;
-    return Math.max(0, eventOrder.indexOf(latest.type));
+    return events.reduce((max, event) => {
+      const index = eventOrder.indexOf(event.type);
+      return index > max ? index : max;
+    }, 0);
   }, [events]);
 
   return {
@@ -104,6 +135,7 @@ export function useReclaimo() {
     connected,
     error,
     events,
+    lapdog,
     purchases,
     refreshPurchases,
     submitReceipt,
@@ -119,3 +151,11 @@ function dedupeEvents(events: AgentEvent[]) {
   });
 }
 
+function sortPurchases(purchases: PurchaseSnapshot[]) {
+  return purchases
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.purchase.created_at).getTime() - new Date(a.purchase.created_at).getTime(),
+    );
+}
