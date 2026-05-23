@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -36,17 +37,28 @@ func main() {
 
 	eventStore := buildEventStore(ctx, cfg)
 	client := &http.Client{Timeout: 5 * time.Second}
+	nimbleClient := &http.Client{Timeout: cfg.Nimble.Timeout}
+
+	var claudeClient *adapters.ClaudeEmailDrafter
+	if cfg.AnthropicAPIKey != "" {
+		claudeClient = adapters.NewClaudeEmailDrafter(cfg.AnthropicAPIKey)
+	}
+
 	agent := orchestrator.New(
 		eventStore,
-		buildPriceMonitor(cfg, client),
+		buildPriceMonitor(cfg, nimbleClient),
 		adapters.HTTPRecoveryPublisher{URL: cfg.RecoveryReportURL, Client: client},
 		adapters.HTTPPaymentRail{URL: cfg.PaymentRailURL, Client: client},
+		adapters.NewPolicyAnalyzer(),
+		buildEmailDrafter(cfg),
+		buildEmailAgent(cfg),
+		cfg.Email.To,
 		cfg.PollInterval,
 		cfg.MaxChecksPerPurchase,
 	)
 
 	mux := http.NewServeMux()
-	registerRoutes(mux, agent)
+	registerRoutes(mux, agent, claudeClient)
 
 	server := &http.Server{
 		Addr:              cfg.Addr,
@@ -92,6 +104,24 @@ func buildEventStore(ctx context.Context, cfg config.Config) events.Store {
 	return events.NewMirrorStore(store, sinks...)
 }
 
+func buildEmailDrafter(cfg config.Config) orchestrator.EmailDrafter {
+	if cfg.AnthropicAPIKey == "" {
+		log.Println("claude email drafting disabled (set ANTHROPIC_API_KEY to enable)")
+		return adapters.NoopEmailDrafter{}
+	}
+	log.Println("claude email drafting enabled")
+	return adapters.NewClaudeEmailDrafter(cfg.AnthropicAPIKey)
+}
+
+func buildEmailAgent(cfg config.Config) orchestrator.EmailSender {
+	if !cfg.Email.Enabled || cfg.Email.Host == "" {
+		log.Println("email agent disabled (set CLAIM_EMAIL_ENABLED=true and CLAIM_SMTP_HOST to enable)")
+		return adapters.NoopEmailAgent{}
+	}
+	log.Printf("email agent enabled: host=%s from=%s", cfg.Email.Host, cfg.Email.From)
+	return adapters.NewEmailAgent(cfg.Email.Host, cfg.Email.Port, cfg.Email.Username, cfg.Email.Password, cfg.Email.From)
+}
+
 func buildPriceMonitor(cfg config.Config, client *http.Client) adapters.PriceMonitor {
 	if cfg.Nimble.Mode != "live" {
 		return adapters.NewMockPriceMonitor()
@@ -101,11 +131,11 @@ func buildPriceMonitor(cfg config.Config, client *http.Client) adapters.PriceMon
 		return adapters.NewMockPriceMonitor()
 	}
 
-	log.Printf("nimble live monitor enabled: base_url=%s driver=%s render=%t", cfg.Nimble.BaseURL, cfg.Nimble.Driver, cfg.Nimble.Render)
+	log.Printf("nimble live monitor enabled: base_url=%s driver=%s render=%t timeout=%s", cfg.Nimble.BaseURL, cfg.Nimble.Driver, cfg.Nimble.Render, cfg.Nimble.Timeout)
 	return adapters.NewNimbleMonitor(cfg.Nimble.BaseURL, cfg.Nimble.APIKey, cfg.Nimble.Driver, cfg.Nimble.Render, client)
 }
 
-func registerRoutes(mux *http.ServeMux, agent *orchestrator.Orchestrator) {
+func registerRoutes(mux *http.ServeMux, agent *orchestrator.Orchestrator, claude *adapters.ClaudeEmailDrafter) {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -127,6 +157,50 @@ func registerRoutes(mux *http.ServeMux, agent *orchestrator.Orchestrator) {
 			return
 		}
 
+		writeJSON(w, http.StatusCreated, map[string]domain.Purchase{"purchase": purchase})
+	})
+
+	mux.HandleFunc("POST /api/receipts/upload", func(w http.ResponseWriter, r *http.Request) {
+		if claude == nil {
+			writeError(w, http.StatusServiceUnavailable, "receipt image parsing requires ANTHROPIC_API_KEY")
+			return
+		}
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			writeError(w, http.StatusBadRequest, "file too large or invalid form")
+			return
+		}
+		file, header, err := r.FormFile("receipt")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "receipt file required")
+			return
+		}
+		defer file.Close()
+
+		mediaType := header.Header.Get("Content-Type")
+		switch mediaType {
+		case "image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf":
+		default:
+			writeError(w, http.StatusBadRequest, "unsupported file type — use JPEG, PNG, WEBP, or PDF")
+			return
+		}
+
+		data, err := io.ReadAll(file)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read file")
+			return
+		}
+
+		parsed, err := claude.ParseReceiptImage(r.Context(), data, mediaType)
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "could not parse receipt: "+err.Error())
+			return
+		}
+
+		purchase, err := agent.IngestParsed(r.Context(), parsed)
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusCreated, map[string]domain.Purchase{"purchase": purchase})
 	})
 
@@ -158,6 +232,22 @@ func registerRoutes(mux *http.ServeMux, agent *orchestrator.Orchestrator) {
 			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]domain.PurchaseSnapshot{"purchase": snapshot})
+	})
+
+	mux.HandleFunc("DELETE /api/purchases/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if err := agent.DeletePurchase(r.PathValue("id")); err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("POST /api/purchases/{id}/approve", func(w http.ResponseWriter, r *http.Request) {
+		if err := agent.ApproveClaim(r.Context(), r.PathValue("id")); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "claim_initiated"})
 	})
 
 	mux.HandleFunc("POST /api/reclaimo/recovery-report", func(w http.ResponseWriter, r *http.Request) {

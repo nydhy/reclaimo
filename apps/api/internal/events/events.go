@@ -8,6 +8,7 @@ type Type string
 
 const (
 	PurchaseIngested        Type = "PURCHASE_INGESTED"
+	PurchaseDeleted         Type = "PURCHASE_DELETED"
 	ProductExtracted        Type = "PRODUCT_EXTRACTED"
 	PriceCheckStarted       Type = "PRICE_CHECK_STARTED"
 	PriceUpdated            Type = "PRICE_UPDATED"
@@ -15,6 +16,11 @@ const (
 	RecoveryReportGenerated Type = "RECOVERY_REPORT_GENERATED"
 	RecoveryPublished       Type = "RECOVERY_PUBLISHED"
 	PaymentTriggered        Type = "PAYMENT_TRIGGERED"
+	PolicyFetched           Type = "POLICY_FETCHED"
+	PolicyAnalyzed          Type = "POLICY_ANALYZED"
+	ClaimPending            Type = "CLAIM_PENDING"
+	ClaimApproved           Type = "CLAIM_APPROVED"
+	ClaimInitiated          Type = "CLAIM_INITIATED"
 )
 
 type Event struct {

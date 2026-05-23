@@ -13,6 +13,7 @@ type ParsedReceipt struct {
 	OrderID string
 	URL     string
 	Source  string
+	SKU     string
 }
 
 var (

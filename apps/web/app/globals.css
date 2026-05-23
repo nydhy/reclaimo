@@ -366,7 +366,7 @@ textarea:focus {
   border-radius: var(--radius-sm);
   display: grid;
   gap: 12px;
-  grid-template-columns: 1fr auto 40px;
+  grid-template-columns: 1fr auto 40px 40px;
   min-height: 86px;
   padding: 12px;
 }
@@ -377,8 +377,7 @@ textarea:focus {
   min-width: 0;
 }
 
-.purchase-main h3,
-.recovery-item span {
+.purchase-main h3 {
   overflow-wrap: anywhere;
 }
 
@@ -447,29 +446,8 @@ textarea:focus {
   width: 38px;
 }
 
-.recovery-list {
-  display: grid;
-  gap: 10px;
-}
-
-.recovery-item {
-  background: #ffffff;
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-sm);
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-}
-
-.recovery-item strong {
-  color: var(--primary-strong);
-  font-size: 24px;
-}
-
-.recovery-item small {
-  color: var(--on-surface-variant);
-  font-size: 12px;
-  font-weight: 700;
+.icon-action.danger {
+  color: #8c2f39;
 }
 
 .trace-console {
@@ -524,6 +502,388 @@ textarea:focus {
 
 .empty-state.compact {
   min-height: 64px;
+}
+
+/* ── Recovery hero ─────────────────────────────────────────── */
+@keyframes recovery-pop {
+  0%   { transform: scale(0.88); opacity: 0; }
+  60%  { transform: scale(1.04); }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+.metric.hero {
+  animation: recovery-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  background: var(--primary-soft);
+  border: 1px solid rgba(27, 106, 29, 0.3);
+  grid-column: span 2;
+}
+
+.metric.hero strong {
+  color: var(--primary-strong);
+  font-size: 38px;
+}
+
+/* ── Monitoring sweep bar ───────────────────────────────────── */
+@keyframes sweep {
+  0%   { left: -45%; }
+  100% { left: 145%; }
+}
+
+.purchase-row {
+  position: relative;
+}
+
+.monitoring-bar {
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  bottom: 0;
+  height: 2px;
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+}
+
+.monitoring-bar::after {
+  animation: sweep 1.8s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  bottom: 0;
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 42%;
+}
+
+.purchase-row.is-recovered {
+  background: #f4fbf4;
+  border-color: rgba(27, 106, 29, 0.38);
+}
+
+/* ── Receipt drop zone ──────────────────────────────────────── */
+.receipt-dropzone {
+  align-items: center;
+  border: 2px dashed var(--outline);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 110px;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  transition: border-color 0.18s, background 0.18s;
+  user-select: none;
+}
+
+.receipt-dropzone:hover,
+.receipt-dropzone.dragging {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  border-style: solid;
+}
+
+.receipt-dropzone.has-file {
+  border-color: var(--primary);
+  border-style: solid;
+}
+
+.receipt-dropzone span {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.receipt-dropzone small {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+.dropzone-icon {
+  color: var(--on-surface-variant);
+}
+
+.dropzone-icon.done  { color: var(--primary-strong); }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.dropzone-icon.spinning {
+  animation: spin 1s linear infinite;
+  color: var(--primary);
+}
+
+/* ── Deadline chip ───────────────────────────────────────────── */
+.deadline-chip {
+  background: var(--tertiary-soft);
+  border-radius: 99px;
+  color: var(--tertiary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
+/* ── Agent status panel ─────────────────────────────────────── */
+.agent-status-panel {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 20px;
+}
+
+.agent-card {
+  background: #fff;
+  border: 1.5px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 32px 1fr;
+  padding: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.agent-card.level-running {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(27, 106, 29, 0.12);
+}
+
+.agent-card.level-waiting {
+  border-color: var(--tertiary);
+  box-shadow: 0 0 0 3px rgba(110, 89, 52, 0.12);
+}
+
+.agent-card.level-done {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.agent-card.level-error {
+  border-color: var(--error);
+  background: #fff5f5;
+}
+
+.agent-card-icon {
+  align-items: center;
+  color: var(--on-surface-variant);
+  display: flex;
+  height: 32px;
+  justify-content: center;
+  position: relative;
+  width: 32px;
+}
+
+.level-running .agent-card-icon  { color: var(--primary); }
+.level-waiting .agent-card-icon  { color: var(--tertiary); }
+.level-done    .agent-card-icon  { color: var(--primary-strong); }
+.level-error   .agent-card-icon  { color: var(--error); }
+
+@keyframes agent-ping {
+  0%   { opacity: 0.8; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(2.4); }
+}
+
+.agent-pulse {
+  animation: agent-ping 1.1s ease-out infinite;
+  background: var(--primary);
+  border-radius: 50%;
+  height: 8px;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 8px;
+}
+
+.agent-card-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-card-body strong {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agent-desc {
+  color: var(--on-surface-variant);
+  font-size: 11px;
+}
+
+.agent-detail {
+  color: var(--on-surface);
+  font-size: 12px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.level-running .agent-detail { color: var(--primary-strong); font-weight: 600; }
+.level-waiting .agent-detail { color: var(--tertiary);       font-weight: 600; }
+.level-done    .agent-detail { color: var(--primary-strong); }
+.level-error   .agent-detail { color: var(--error); }
+
+/* ── Recovery celebration ────────────────────────────────────── */
+@keyframes celebrate {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(27, 106, 29, 0); }
+  30%  { transform: scale(1.08); box-shadow: 0 0 0 8px rgba(27, 106, 29, 0.25); }
+  60%  { transform: scale(1.04); box-shadow: 0 0 0 16px rgba(27, 106, 29, 0); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(27, 106, 29, 0); }
+}
+
+.metric.celebrating {
+  animation: celebrate 0.7s ease-out forwards;
+  background: var(--primary-soft);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Tool feed ──────────────────────────────────────────────── */
+.tool-feed {
+  border-top: 1px solid var(--outline-variant);
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.tool-row {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 3px 10px;
+  grid-template-columns: 18px 80px 1fr;
+  padding: 9px 12px;
+}
+
+.tool-row strong {
+  font-size: 13px;
+}
+
+.tool-row span {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  grid-column: 3;
+}
+
+.tool-row.nimble strong     { color: var(--primary-strong); }
+.tool-row.clickhouse strong { color: #c07000; }
+.tool-row.lapdog strong     { color: var(--secondary); }
+
+/* ── Recovery card ──────────────────────────────────────────── */
+.recovery-item {
+  background: #fff;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.recovery-item.pending-claim {
+  border-color: var(--tertiary);
+  background: var(--tertiary-soft);
+}
+
+.recovery-item.claim-submitted {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.recovery-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.recovery-item-header span {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recovery-item small {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+/* ── Policy badge ───────────────────────────────────────────── */
+.policy-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.policy-badge {
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.policy-badge.eligible {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.policy-badge.ineligible {
+  background: var(--surface-container);
+  color: var(--on-surface-variant);
+}
+
+.policy-detail {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+/* ── Claim action ───────────────────────────────────────────── */
+.claim-action {
+  border-top: 1px solid var(--outline-variant);
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+.claim-preview {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-style: italic;
+  margin: 0;
+}
+
+.claim-sending {
+  align-items: center;
+  color: var(--tertiary);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 5px;
+  margin: 0;
+}
+
+.claim-sent {
+  align-items: center;
+  color: var(--primary-strong);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 5px;
+  margin: 0;
+}
+
+/* ── Recovery list spacing ──────────────────────────────────── */
+.recovery-list {
+  display: grid;
+  gap: 10px;
 }
 
 @media (max-width: 1120px) {

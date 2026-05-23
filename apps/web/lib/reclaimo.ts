@@ -2,13 +2,19 @@
 
 export type EventType =
   | "PURCHASE_INGESTED"
+  | "PURCHASE_DELETED"
   | "PRODUCT_EXTRACTED"
   | "PRICE_CHECK_STARTED"
   | "PRICE_UPDATED"
   | "PRICE_DROP_DETECTED"
   | "RECOVERY_REPORT_GENERATED"
   | "RECOVERY_PUBLISHED"
-  | "PAYMENT_TRIGGERED";
+  | "PAYMENT_TRIGGERED"
+  | "POLICY_FETCHED"
+  | "POLICY_ANALYZED"
+  | "CLAIM_PENDING"
+  | "CLAIM_APPROVED"
+  | "CLAIM_INITIATED";
 
 export type AgentEvent = {
   id: string;
@@ -31,6 +37,7 @@ export type Purchase = {
   source: string;
   order_id?: string;
   url?: string;
+  sku?: string;
   created_at: string;
 };
 
@@ -44,15 +51,43 @@ export type PriceObservation = {
   timestamp: string;
 };
 
+export type PolicyAnalysis = {
+  retailer: string;
+  eligible: boolean;
+  window_days: number;
+  methods: string[];
+  claim_email?: string;
+  tat_days: string;
+  policy_url?: string;
+  fetched_at: string;
+};
+
+export type ClaimPacket = {
+  purchase_id: string;
+  product: string;
+  baseline_price: number;
+  current_price: number;
+  recovery_amount: number;
+  order_id?: string;
+  policy: PolicyAnalysis;
+  draft_subject: string;
+  draft_body: string;
+  sent_at?: string;
+  created_at: string;
+};
+
 export type PurchaseSnapshot = {
   purchase: Purchase;
-  status: "monitoring" | "recovered" | "stopped";
+  status: "monitoring" | "recovered" | "pending_claim" | "claim_submitted" | "stopped";
   check_count: number;
   max_checks?: number;
   last_checked_at?: string;
   last_observed?: PriceObservation;
   recovered_at?: string;
   terminal_reason?: string;
+  policy_analysis?: PolicyAnalysis;
+  claim_packet?: ClaimPacket;
+  deadline?: string;
 };
 
 export async function fetchPurchases(): Promise<PurchaseSnapshot[]> {
@@ -90,6 +125,20 @@ export async function ingestReceipt(text: string): Promise<Purchase> {
   return body.purchase as Purchase;
 }
 
+export async function uploadReceipt(file: File): Promise<Purchase> {
+  const form = new FormData();
+  form.append("receipt", file);
+  const response = await fetch("/reclaimo-api/api/receipts/upload", {
+    method: "POST",
+    body: form,
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error ?? `Upload failed: ${response.status}`);
+  }
+  return body.purchase as Purchase;
+}
+
 export async function runManualCheck(id: string): Promise<PurchaseSnapshot> {
   const response = await fetch(`/reclaimo-api/api/purchases/${id}/check`, {
     method: "POST",
@@ -99,6 +148,26 @@ export async function runManualCheck(id: string): Promise<PurchaseSnapshot> {
     throw new Error(body.error ?? `Manual check failed: ${response.status}`);
   }
   return body.purchase as PurchaseSnapshot;
+}
+
+export async function approveClaim(id: string): Promise<void> {
+  const response = await fetch(`/reclaimo-api/api/purchases/${id}/approve`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    const body = await response.json();
+    throw new Error(body.error ?? `Approve failed: ${response.status}`);
+  }
+}
+
+export async function deletePurchase(id: string): Promise<void> {
+  const response = await fetch(`/reclaimo-api/api/purchases/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = await response.json();
+    throw new Error(body.error ?? `Delete failed: ${response.status}`);
+  }
 }
 
 export async function fetchLapdogInfo(): Promise<LapdogInfo> {
@@ -122,6 +191,7 @@ export function subscribeToEvents(
     onEvent(JSON.parse(message.data) as AgentEvent);
   };
   source.addEventListener("PURCHASE_INGESTED", parseEvent(onEvent));
+  source.addEventListener("PURCHASE_DELETED", parseEvent(onEvent));
   source.addEventListener("PRODUCT_EXTRACTED", parseEvent(onEvent));
   source.addEventListener("PRICE_CHECK_STARTED", parseEvent(onEvent));
   source.addEventListener("PRICE_UPDATED", parseEvent(onEvent));
@@ -129,6 +199,11 @@ export function subscribeToEvents(
   source.addEventListener("RECOVERY_REPORT_GENERATED", parseEvent(onEvent));
   source.addEventListener("RECOVERY_PUBLISHED", parseEvent(onEvent));
   source.addEventListener("PAYMENT_TRIGGERED", parseEvent(onEvent));
+  source.addEventListener("POLICY_FETCHED", parseEvent(onEvent));
+  source.addEventListener("POLICY_ANALYZED", parseEvent(onEvent));
+  source.addEventListener("CLAIM_PENDING", parseEvent(onEvent));
+  source.addEventListener("CLAIM_APPROVED", parseEvent(onEvent));
+  source.addEventListener("CLAIM_INITIATED", parseEvent(onEvent));
   return () => source.close();
 }
 
@@ -165,6 +240,8 @@ export function eventSummary(event: AgentEvent) {
         ? `Registered ${purchase.product} at ${money(purchase.baseline_price)} from ${purchase.source}`
         : "Registered purchase";
     }
+    case "PURCHASE_DELETED":
+      return `Removed ${stringValue(payload.product)} from active monitoring`;
     case "PRODUCT_EXTRACTED":
       return `Extracted ${stringValue(payload.product)} with baseline ${money(numberValue(payload.baseline_price))}`;
     case "PRICE_CHECK_STARTED":
@@ -196,6 +273,26 @@ export function eventSummary(event: AgentEvent) {
       const transaction = payload.transaction as { amount?: number; status?: string } | undefined;
       if (typeof payload.error === "string") return `Payment rail failed: ${payload.error}`;
       return `Triggered payment intent for ${money(transaction?.amount)} (${transaction?.status ?? "initiated"})`;
+    }
+    case "POLICY_FETCHED":
+    case "POLICY_ANALYZED": {
+      const policy = payload.policy as PolicyAnalysis | undefined;
+      if (!policy) return "Retailer policy analyzed";
+      return policy.eligible
+        ? `${policy.retailer} eligible — ${policy.window_days}-day window, ${policy.tat_days} TAT`
+        : `${policy.retailer} policy: not eligible for price match`;
+    }
+    case "CLAIM_PENDING": {
+      const claim = payload.claim as ClaimPacket | undefined;
+      return claim
+        ? `Claim ready for ${claim.product} — awaiting your approval to send email`
+        : "Claim packet prepared, awaiting approval";
+    }
+    case "CLAIM_APPROVED":
+      return `Claim approved — dispatching email to retailer`;
+    case "CLAIM_INITIATED": {
+      if (typeof payload.error === "string") return `Claim email failed: ${payload.error}`;
+      return `Claim email sent to ${stringValue(payload.sent_to)}`;
     }
     default:
       return "Agent event recorded";

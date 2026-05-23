@@ -149,6 +149,49 @@ func TestCheckPurchaseByIDReturnsSnapshot(t *testing.T) {
 	}
 }
 
+func TestIngestReceiptDedupesByOrderID(t *testing.T) {
+	store := events.NewMemoryStore()
+	agent := New(store, fakeMonitor{err: errors.New("skip live check")}, &fakePublisher{}, &fakePaymentRail{}, time.Hour, 0)
+	receipt := "Test Product\nPrice: $100\nOrder ID: DUP-100\nhttps://example.com/product"
+
+	first, err := agent.IngestReceipt(context.Background(), receipt)
+	if err != nil {
+		t.Fatalf("first IngestReceipt returned error: %v", err)
+	}
+	second, err := agent.IngestReceipt(context.Background(), receipt)
+	if err != nil {
+		t.Fatalf("second IngestReceipt returned error: %v", err)
+	}
+
+	if second.ID != first.ID {
+		t.Fatalf("duplicate receipt returned id %q, want %q", second.ID, first.ID)
+	}
+	if got := len(agent.ListPurchases()); got != 1 {
+		t.Fatalf("purchase count = %d, want 1", got)
+	}
+	assertEventCount(t, store.List(), events.PurchaseIngested, 1)
+}
+
+func TestDeletePurchaseRemovesActivePurchase(t *testing.T) {
+	store := events.NewMemoryStore()
+	agent := New(store, fakeMonitor{err: errors.New("skip live check")}, &fakePublisher{}, &fakePaymentRail{}, time.Hour, 0)
+	purchase, err := agent.IngestReceipt(context.Background(), "Test Product\nPrice: $100\nOrder ID: DEL-100")
+	if err != nil {
+		t.Fatalf("IngestReceipt returned error: %v", err)
+	}
+
+	if err := agent.DeletePurchase(purchase.ID); err != nil {
+		t.Fatalf("DeletePurchase returned error: %v", err)
+	}
+	if _, err := agent.PurchaseSnapshot(purchase.ID); err == nil {
+		t.Fatal("PurchaseSnapshot should fail after delete")
+	}
+	if got := len(agent.ListPurchases()); got != 0 {
+		t.Fatalf("purchase count = %d, want 0", got)
+	}
+	assertEventCount(t, store.List(), events.PurchaseDeleted, 1)
+}
+
 func TestMonitoringStopsAtMaxChecks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

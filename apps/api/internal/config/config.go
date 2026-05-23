@@ -14,9 +14,11 @@ type Config struct {
 	MaxChecksPerPurchase int
 	RecoveryReportURL    string
 	PaymentRailURL       string
+	AnthropicAPIKey      string
 	Nimble               NimbleConfig
 	ClickHouse           ClickHouseConfig
 	Observability        ObservabilityConfig
+	Email                EmailConfig
 }
 
 type NimbleConfig struct {
@@ -25,6 +27,7 @@ type NimbleConfig struct {
 	BaseURL string
 	Driver  string
 	Render  bool
+	Timeout time.Duration
 }
 
 type ClickHouseConfig struct {
@@ -42,6 +45,16 @@ type ObservabilityConfig struct {
 	Env       string
 }
 
+type EmailConfig struct {
+	Enabled  bool
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	To       string
+}
+
 func Load() Config {
 	addr := env("RECLAIMO_API_ADDR", "127.0.0.1:8080")
 
@@ -52,12 +65,14 @@ func Load() Config {
 		MaxChecksPerPurchase: envInt("RECLAIMO_MAX_CHECKS_PER_PURCHASE", 0),
 		RecoveryReportURL:    env("RECOVERY_REPORT_URL", "http://"+addr+"/api/reclaimo/recovery-report"),
 		PaymentRailURL:       env("PAYMENT_RAIL_URL", "http://"+addr+"/x402/transaction"),
+		AnthropicAPIKey:      env("ANTHROPIC_API_KEY", ""),
 		Nimble: NimbleConfig{
 			Mode:    env("RECLAIMO_NIMBLE_MODE", "mock"),
 			APIKey:  env("NIMBLE_API_KEY", ""),
 			BaseURL: strings.TrimRight(env("NIMBLE_BASE_URL", "https://sdk.nimbleway.com/v1"), "/"),
 			Driver:  env("NIMBLE_DRIVER", "vx6"),
 			Render:  envBool("NIMBLE_RENDER", false),
+			Timeout: envDuration("NIMBLE_TIMEOUT", 30*time.Second),
 		},
 		ClickHouse: ClickHouseConfig{
 			Enabled:  envBool("CLICKHOUSE_ENABLED", false),
@@ -71,6 +86,15 @@ func Load() Config {
 			Service:   env("DD_SERVICE", "reclaimo-api"),
 			AgentAddr: env("DD_AGENT_ADDR", "127.0.0.1:8126"),
 			Env:       env("DD_ENV", "local"),
+		},
+		Email: EmailConfig{
+			Enabled:  envBool("CLAIM_EMAIL_ENABLED", false),
+			Host:     env("CLAIM_SMTP_HOST", ""),
+			Port:     envInt("CLAIM_SMTP_PORT", 587),
+			Username: env("CLAIM_SMTP_USERNAME", ""),
+			Password: env("CLAIM_SMTP_PASSWORD", ""),
+			From:     env("CLAIM_FROM_EMAIL", ""),
+			To:       env("CLAIM_TO_EMAIL", ""),
 		},
 	}
 }
