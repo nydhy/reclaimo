@@ -72,3 +72,14 @@ curl --user 'default:<password>' \
   --data-binary 'SELECT type, count() FROM reclaimo.events GROUP BY type ORDER BY type' \
   https://c6yash1lix.us-east-1.aws.clickhouse.cloud:8443
 ```
+
+## Local Web App
+
+Start the backend first, then run:
+
+```sh
+npm install
+npm run web:dev
+```
+
+The web app runs on `http://localhost:3000` and proxies backend calls through `/reclaimo-api/*`. Set `RECLAIMO_API_URL` if the Go API is not running on `http://127.0.0.1:8080`.
