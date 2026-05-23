@@ -20,9 +20,15 @@ Publish recovery reports and trigger simulated payment intents through adapter i
 
 Wire Nimble, ClickHouse, and Datadog/Lapdog behind explicit configuration flags.
 
+Status:
+
+- Nimble live adapter is available behind `RECLAIMO_NIMBLE_MODE=live`.
+- ClickHouse event mirroring is available behind `CLICKHOUSE_ENABLED=true`.
+- Lapdog/Datadog observability currently uses a log sink when `DATADOG_ENABLED=true`; run the API through Lapdog for local trace capture.
+
 ## Operational Notes
 
 - Nimble trial calls are protected by `RECLAIMO_NIMBLE_MODE=mock` by default.
+- Nimble live mode requires receipt text to include a product URL.
 - Secrets belong in `.env` or a secret manager, never in committed files.
 - Commit and push after each completed phase.
-

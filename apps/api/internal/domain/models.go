@@ -8,6 +8,7 @@ type Purchase struct {
 	BaselinePrice float64   `json:"baseline_price"`
 	Source        string    `json:"source"`
 	OrderID       string    `json:"order_id,omitempty"`
+	URL           string    `json:"url,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 

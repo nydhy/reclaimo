@@ -34,5 +34,28 @@ Copy `.env.example` to `.env` for local development. Do not commit `.env`.
 Real external calls are opt-in:
 
 - Nimble calls require `RECLAIMO_NIMBLE_MODE=live`.
+- Nimble live monitoring requires a product URL in the receipt text.
 - Recovery publishing defaults to the local API endpoint.
 - Payment rails are simulated until x402/CDP credentials exist.
+
+## Live Integration Guardrails
+
+By default, the backend uses deterministic mock pricing. To enable live Nimble extraction, set:
+
+```sh
+RECLAIMO_NIMBLE_MODE=live
+NIMBLE_API_KEY=...
+```
+
+The live adapter uses Nimble's documented `POST /v1/extract` endpoint and Bearer authentication. Keep `RECLAIMO_POLL_INTERVAL` conservative while on a trial plan.
+
+ClickHouse is optional:
+
+```sh
+CLICKHOUSE_ENABLED=true
+CLICKHOUSE_ADDR=https://your-clickhouse-host:8443
+CLICKHOUSE_USERNAME=default
+CLICKHOUSE_PASSWORD=...
+```
+
+When enabled, events are mirrored to ClickHouse while the in-memory store remains active for local reads and SSE.

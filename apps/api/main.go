@@ -6,44 +6,34 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/nydhy/reclaimo/apps/api/internal/adapters"
+	"github.com/nydhy/reclaimo/apps/api/internal/config"
 	"github.com/nydhy/reclaimo/apps/api/internal/domain"
 	"github.com/nydhy/reclaimo/apps/api/internal/events"
 	"github.com/nydhy/reclaimo/apps/api/internal/orchestrator"
 )
-
-type config struct {
-	Addr              string
-	DemoEnabled       bool
-	RecoveryReportURL string
-	PaymentRailURL    string
-	NimbleMode        string
-}
 
 type receiptRequest struct {
 	Text string `json:"text"`
 }
 
 func main() {
-	cfg := loadConfig()
-	if cfg.NimbleMode == "live" {
-		log.Println("nimble live mode requested, but live adapter is not wired yet; using mock monitor")
-	}
+	cfg := config.Load()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	eventStore := events.NewMemoryStore()
+	eventStore := buildEventStore(ctx, cfg)
 	client := &http.Client{Timeout: 5 * time.Second}
 	agent := orchestrator.New(
 		eventStore,
-		adapters.NewMockPriceMonitor(),
+		buildPriceMonitor(cfg, client),
 		adapters.HTTPRecoveryPublisher{URL: cfg.RecoveryReportURL, Client: client},
 		adapters.HTTPPaymentRail{URL: cfg.PaymentRailURL, Client: client},
+		cfg.PollInterval,
 	)
 
 	mux := http.NewServeMux()
@@ -66,6 +56,44 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func buildEventStore(ctx context.Context, cfg config.Config) events.Store {
+	store := events.NewMemoryStore()
+	sinks := []events.Sink{}
+
+	if cfg.ClickHouse.Enabled {
+		sink := adapters.NewClickHouseSink(cfg.ClickHouse.Addr, cfg.ClickHouse.Database, cfg.ClickHouse.Username, cfg.ClickHouse.Password, http.DefaultClient)
+		if err := sink.EnsureSchema(ctx); err != nil {
+			log.Printf("clickhouse disabled after schema check failed: %v", err)
+		} else {
+			sinks = append(sinks, sink)
+			log.Printf("clickhouse event sink enabled: database=%s", cfg.ClickHouse.Database)
+		}
+	}
+
+	if cfg.Observability.Enabled {
+		sinks = append(sinks, adapters.NewLogTelemetrySink(cfg.Observability.Service))
+		log.Printf("observability event sink enabled: service=%s", cfg.Observability.Service)
+	}
+
+	if len(sinks) == 0 {
+		return store
+	}
+	return events.NewMirrorStore(store, sinks...)
+}
+
+func buildPriceMonitor(cfg config.Config, client *http.Client) adapters.PriceMonitor {
+	if cfg.Nimble.Mode != "live" {
+		return adapters.NewMockPriceMonitor()
+	}
+	if cfg.Nimble.APIKey == "" {
+		log.Println("nimble live mode requested without NIMBLE_API_KEY; using mock monitor")
+		return adapters.NewMockPriceMonitor()
+	}
+
+	log.Printf("nimble live monitor enabled: base_url=%s driver=%s render=%t", cfg.Nimble.BaseURL, cfg.Nimble.Driver, cfg.Nimble.Render)
+	return adapters.NewNimbleMonitor(cfg.Nimble.BaseURL, cfg.Nimble.APIKey, cfg.Nimble.Driver, cfg.Nimble.Render, client)
 }
 
 func registerRoutes(mux *http.ServeMux, agent *orchestrator.Orchestrator) {
@@ -166,23 +194,4 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
-}
-
-func loadConfig() config {
-	addr := env("RECLAIMO_API_ADDR", "127.0.0.1:8080")
-	return config{
-		Addr:              addr,
-		DemoEnabled:       env("RECLAIMO_DEMO_ENABLED", "true") != "false",
-		RecoveryReportURL: env("RECOVERY_REPORT_URL", "http://"+addr+"/api/reclaimo/recovery-report"),
-		PaymentRailURL:    env("PAYMENT_RAIL_URL", "http://"+addr+"/x402/transaction"),
-		NimbleMode:        env("RECLAIMO_NIMBLE_MODE", "mock"),
-	}
-}
-
-func env(key, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-	return value
 }

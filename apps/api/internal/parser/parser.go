@@ -11,12 +11,14 @@ type ParsedReceipt struct {
 	Product string
 	Price   float64
 	OrderID string
+	URL     string
 	Source  string
 }
 
 var (
 	pricePattern = regexp.MustCompile(`(?i)(?:price|total|amount)\s*:?\s*\$?([0-9]+(?:\.[0-9]{1,2})?)`)
 	orderPattern = regexp.MustCompile(`(?i)(?:order\s*id|order\s*number|order\s*#|confirmation\s*number)\s*:?\s*#?\s*([A-Za-z0-9-]+)`)
+	urlPattern   = regexp.MustCompile(`https?://[^\s<>"']+`)
 )
 
 func ParseReceipt(text string) (ParsedReceipt, error) {
@@ -34,6 +36,7 @@ func ParseReceipt(text string) (ParsedReceipt, error) {
 		Product: extractProduct(lines),
 		Price:   price,
 		OrderID: extractOrderID(text),
+		URL:     extractURL(text),
 		Source:  "receipt",
 	}, nil
 }
@@ -75,4 +78,9 @@ func extractOrderID(text string) string {
 		return ""
 	}
 	return match[1]
+}
+
+func extractURL(text string) string {
+	match := urlPattern.FindString(text)
+	return strings.TrimRight(match, ".,)")
 }

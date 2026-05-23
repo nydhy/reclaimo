@@ -33,3 +33,16 @@ func TestParseReceiptDoesNotTreatOrderFromAsOrderID(t *testing.T) {
 		t.Fatalf("order id = %q, want empty", parsed.OrderID)
 	}
 }
+
+func TestParseReceiptExtractsProductURL(t *testing.T) {
+	receipt := "MacBook Pro 14 M4\nPrice: $2199\nhttps://example.com/product/macbook."
+
+	parsed, err := ParseReceipt(receipt)
+	if err != nil {
+		t.Fatalf("ParseReceipt returned error: %v", err)
+	}
+
+	if parsed.URL != "https://example.com/product/macbook" {
+		t.Fatalf("url = %q, want https://example.com/product/macbook", parsed.URL)
+	}
+}

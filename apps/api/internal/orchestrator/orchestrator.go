@@ -17,19 +17,26 @@ type Orchestrator struct {
 	monitor   adapters.PriceMonitor
 	publisher adapters.RecoveryPublisher
 	payments  adapters.PaymentRail
+	interval  time.Duration
 
 	mu         sync.RWMutex
+	emitMu     sync.Mutex
 	purchases  map[string]domain.Purchase
 	recovered  map[string]bool
 	idSequence int
 }
 
-func New(store events.Store, monitor adapters.PriceMonitor, publisher adapters.RecoveryPublisher, payments adapters.PaymentRail) *Orchestrator {
+func New(store events.Store, monitor adapters.PriceMonitor, publisher adapters.RecoveryPublisher, payments adapters.PaymentRail, interval time.Duration) *Orchestrator {
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+
 	return &Orchestrator{
 		store:     store,
 		monitor:   monitor,
 		publisher: publisher,
 		payments:  payments,
+		interval:  interval,
 		purchases: make(map[string]domain.Purchase),
 		recovered: make(map[string]bool),
 	}
@@ -47,6 +54,7 @@ func (o *Orchestrator) IngestReceipt(ctx context.Context, text string) (domain.P
 		BaselinePrice: parsed.Price,
 		Source:        parsed.Source,
 		OrderID:       parsed.OrderID,
+		URL:           parsed.URL,
 		CreatedAt:     time.Now().UTC(),
 	}
 
@@ -61,7 +69,7 @@ func (o *Orchestrator) IngestReceipt(ctx context.Context, text string) (domain.P
 		"baseline_price": purchase.BaselinePrice,
 	})
 
-	go o.monitorPurchase(ctx, purchase, 5*time.Second)
+	go o.monitorPurchase(ctx, purchase)
 
 	return purchase, nil
 }
@@ -85,8 +93,8 @@ func (o *Orchestrator) Subscribe() (<-chan events.Event, func()) {
 	return o.store.Subscribe()
 }
 
-func (o *Orchestrator) monitorPurchase(ctx context.Context, purchase domain.Purchase, interval time.Duration) {
-	ticker := time.NewTicker(interval)
+func (o *Orchestrator) monitorPurchase(ctx context.Context, purchase domain.Purchase) {
+	ticker := time.NewTicker(o.interval)
 	defer ticker.Stop()
 
 	o.checkPrice(ctx, purchase)
@@ -170,6 +178,9 @@ func (o *Orchestrator) handleDrop(ctx context.Context, purchase domain.Purchase,
 }
 
 func (o *Orchestrator) emit(eventType events.Type, payload map[string]any) {
+	o.emitMu.Lock()
+	defer o.emitMu.Unlock()
+
 	o.store.Append(events.Event{
 		ID:        o.nextID("event"),
 		Type:      eventType,
